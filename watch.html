@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Digital Prayer Watch with Location and Prayer Times - Hanafi</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@700&display=swap');
+  body {
+    margin: 0;
+    height: 100vh;
+    background-color: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: 'Rajdhani', sans-serif;
+    color: #fff;
+  }
+  .watch-container {
+    width: 380px;
+    background: #000;
+    border: 3px solid #fff;
+    border-radius: 8px;
+    box-shadow:
+      0 0 15px 4px rgba(255, 255, 255, 0.7),
+      0 0 30px 8px rgba(255, 255, 255, 0.45),
+      0 0 40px 15px rgba(255, 255, 255, 0.2);
+    color: #fff;
+    padding: 20px;
+    box-sizing: border-box;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .osama-graphic {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 900;
+    color: #fff;
+    font-size: 2rem;
+    text-align: center;
+    letter-spacing: 8px;
+    text-shadow:
+      0 0 12px white,
+      0 0 18px white,
+      0 0 22px white;
+  }
+  #time-date-container {
+    background: rgba(255,255,255,0.05);
+    border: 1.8px solid #fff;
+    border-radius: 6px;
+    padding: 15px 20px;
+    text-align: center;
+    box-shadow: 0 0 8px 2px rgba(255,255,255,0.4);
+  }
+  .time-display {
+    font-size: 3.8rem;
+    letter-spacing: 3.5px;
+    line-height: 1.1;
+  }
+  .date-display {
+    font-size: 1.2rem;
+    margin-top: -6px;
+    opacity: 0.75;
+  }
+  .prayer-times {
+    color: #fff;
+    font-weight: 600;
+    font-size: 1.15rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 14px;
+    row-gap: 10px;
+    padding: 0 15px 0 15px;
+  }
+  .prayer-times .title {
+    grid-column: 1 / span 2;
+    text-align: center;
+    font-size: 1.4rem;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #fff;
+    padding-bottom: 8px;
+  }
+  .prayer-name {
+    text-transform: uppercase;
+    text-align: left;
+  }
+  .prayer-time {
+    text-align: right;
+  }
+  .footer {
+    font-size: 0.85rem;
+    opacity: 0.55;
+    text-align: center;
+    margin-top: 6px;
+  }
+  .error-message {
+    color: #f44336;
+    font-size: 1rem;
+    text-align: center;
+    margin-top: 12px;
+    grid-column: 1 / span 2;
+  }
+</style>
+</head>
+<body>
+
+<div class="watch-container" role="main" aria-label="Digital Prayer Watch">
+  <div class="osama-graphic" aria-label="Osama Watch Logo">OSAMA</div>
+  <div id="time-date-container">
+    <div id="time" class="time-display" aria-live="polite">--:--:--</div>
+    <div id="date" class="date-display" aria-live="polite">Loading date...</div>
+  </div>
+  <div id="prayer-times" class="prayer-times" aria-label="Prayer times for today">
+    <div class="title">Prayer Times</div>
+    <div class="prayer-name">Fajr</div><div class="prayer-time" id="fajr">--:--</div>
+    <div class="prayer-name">Sunrise</div><div class="prayer-time" id="sunrise">--:--</div>
+    <div class="prayer-name">Dhuhr</div><div class="prayer-time" id="dhuhr">--:--</div>
+    <div class="prayer-name">Asr (Hanafi)</div><div class="prayer-time" id="asr">--:--</div>
+    <div class="prayer-name">Maghrib</div><div class="prayer-time" id="maghrib">--:--</div>
+    <div class="prayer-name">Isha</div><div class="prayer-time" id="isha">--:--</div>
+    <div id="error" class="error-message" role="alert" aria-live="assertive"></div>
+  </div>
+  <div class="footer" aria-live="polite">
+    Location: <span id="location">Loading...</span>
+  </div>
+</div>
+
+<script>
+const PrayTimes = function(method) {
+  const methods = {
+    MWL: { name: 'Muslim World League', fajr: 18, isha: 17 },
+    ISNA: { name: 'Islamic Society of North America (ISNA)', fajr: 15, isha: 15 },
+    Egypt: { name: 'Egyptian General Authority of Survey', fajr: 19.5, isha: 17.5 },
+    Makkah: { name: 'Umm Al-Qura University, Makkah', fajr: 18.5, isha: '90 min' },
+    Karachi: { name: 'University of Islamic Sciences, Karachi', fajr: 18, isha: 18 },
+    Tehran: { name: 'Institute of Geophysics, University of Tehran', fajr: 17.7, isha: 14, maghrib: 4.5, midnight: 'Jafari' },
+    Jafari: { name: 'Shia Ithna-Ashari, Leva Institute, Qum', fajr: 16, isha: 14, maghrib: 4, midnight: 'Jafari' }
+  };
+
+  this.setting = { method: method || 'MWL', highLats: 'NightMiddle', dhuhr: 0, adjustments: {} };
+
+  const dtr = Math.PI / 180;
+  const rtd = 180 / Math.PI;
+
+  function sin(d) { return Math.sin(d * dtr); }
+  function cos(d) { return Math.cos(d * dtr); }
+  function tan(d) { return Math.tan(d * dtr); }
+  function arcsin(d) { return Math.asin(d) * rtd; }
+  function arccos(d) { return Math.acos(d) * rtd; }
+  function arctan(x) { return Math.atan(x) * rtd; }
+  function arccot(x) { return arctan(1/x); }
+  function fixAngle(a) { return (a - 360 * Math.floor(a / 360)); }
+  function fixHour(h) { return (h - 24 * Math.floor(h / 24)); }
+
+  function julian(year, month, day) {
+    if (month <= 2) {
+      year -= 1;
+      month += 12;
+    }
+    const A = Math.floor(year / 100);
+    const B = 2 - A + Math.floor(A / 4);
+    return Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) + day + B - 1524.5;
+  }
+
+  function sunPosition(jd) {
+    const D = jd - 2451545.0;
+    const g = fixAngle(357.529 + 0.98560028 * D);
+    const q = fixAngle(280.459 + 0.98564736 * D);
+    const L = fixAngle(q + 1.915 * sin(g) + 0.02 * sin(2 * g));
+    const e = 23.439 - 0.00000036 * D;
+    const RA = arctan(cos(e) * sin(L) / cos(L)) / 15;
+    const decl = arcsin(sin(e) * sin(L));
+    const eqt = q / 15 - RA;
+    return { declination: decl, equation: eqt };
+  }
+
+  this.getPrayerTimes = function(date, coords, timeZone, dst) {
+    const lat = coords.latitude;
+    const lng = coords.longitude;
+    const JDate = julian(date.getFullYear(), date.getMonth() + 1, date.getDate()) - lng / (15 * 24);
+
+    const sun = sunPosition(JDate);
+    const decl = sun.declination;
+
+    const noon = fixHour(12 - sun.equation);
+
+    function sunAngleTime(angle, time, direction) {
+      const term1 = -sin(angle) - sin(decl) * sin(lat);
+      const term2 = cos(decl) * cos(lat);
+      return time + (direction === 'ccw' ? -arccos(term1 / term2) : arccos(term1 / term2)) / 15;
+    }
+
+    const fajrAngle = methods[this.setting.method]?.fajr || 18;
+
+    const times = {};
+    times.fajr = sunAngleTime(-fajrAngle, noon, 'ccw');
+    times.sunrise = sunAngleTime(-0.833, noon, 'ccw');
+    times.dhuhr = noon + this.setting.dhuhr / 60;
+    function asrTime(factor) {
+      return sunAngleTime(-arccot(factor + tan(Math.abs(lat - decl))), noon, 'cw');
+    }
+    times.asr = asrTime(2); // Hanafi uses factor 2 for Asr
+    times.maghrib = sunAngleTime(-0.833, noon, 'cw');
+    const ishaAngle = typeof methods[this.setting.method]?.isha === 'string' ? 18 : methods[this.setting.method]?.isha || 18;
+    if (typeof ishaAngle === 'string' && ishaAngle.includes('min')) {
+      times.isha = times.maghrib + parseInt(ishaAngle) / 60;
+    } else {
+      times.isha = sunAngleTime(-ishaAngle, noon, 'cw');
+    }
+
+    function timeToDate(t) {
+      const hrs = Math.floor(t);
+      const min = Math.floor((t - hrs) * 60);
+      const sec = Math.floor(((t - hrs) * 60 - min) * 60);
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hrs, min, sec);
+      const localOffset = d.getTimezoneOffset() / 60;
+      return new Date(d.getTime() + (timeZone + localOffset) * 3600000);
+    }
+
+    return {
+      fajr: timeToDate(times.fajr),
+      sunrise: timeToDate(times.sunrise),
+      dhuhr: timeToDate(times.dhuhr),
+      asr: timeToDate(times.asr),
+      maghrib: timeToDate(times.maghrib),
+      isha: timeToDate(times.isha)
+    };
+  };
+};
+
+function padZero(num) {
+  return num < 10 ? '0' + num : num;
+}
+
+function to12HourFormat(date) {
+  if (!date) return '--:--';
+  let hours = date.getHours();
+  const minutes = padZero(date.getMinutes());
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  return hours + ':' + minutes + ' ' + ampm;
+}
+
+function formatTimeWithSeconds12(date) {
+  if (!date) return '--:--:--';
+  let hours = date.getHours();
+  const minutes = padZero(date.getMinutes());
+  const seconds = padZero(date.getSeconds());
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  return hours + ':' + minutes + ':' + seconds + ' ' + ampm;
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('time').textContent = formatTimeWithSeconds12(now);
+  document.getElementById('date').textContent = now.toDateString();
+}
+
+function showError(message) {
+  document.getElementById('error').textContent = message;
+}
+
+function updatePrayerTimesAndLocation(position) {
+  const coords = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude
+  };
+
+  fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.latitude}&lon=${coords.longitude}`)
+    .then(res => res.json())
+    .then(data => {
+      const address = data.address;
+      const locationName = (address.city || address.town || address.village || '') +
+        (address.state ? ', ' + address.state : '') +
+        (address.country ? ', ' + address.country : '');
+      document.getElementById('location').textContent = locationName || 'Coordinates';
+    })
+    .catch(() => {
+      document.getElementById('location').textContent = `Lat: ${coords.latitude.toFixed(2)}, Lon: ${coords.longitude.toFixed(2)}`;
+    });
+
+  const date = new Date();
+  const timeZoneOffset = -date.getTimezoneOffset() / 60;
+
+  const prayTimes = new PrayTimes('MWL');
+  const prayers = prayTimes.getPrayerTimes(date, coords, timeZoneOffset, 0);
+
+  document.getElementById('fajr').textContent = to12HourFormat(prayers.fajr);
+  document.getElementById('sunrise').textContent = to12HourFormat(prayers.sunrise);
+  document.getElementById('dhuhr').textContent = to12HourFormat(prayers.dhuhr);
+  document.getElementById('asr').textContent = to12HourFormat(prayers.asr);
+  document.getElementById('maghrib').textContent = to12HourFormat(prayers.maghrib);
+  document.getElementById('isha').textContent = to12HourFormat(prayers.isha);
+  showError('');
+}
+
+function handleLocationError(error) {
+  let message = '';
+  switch(error.code) {
+    case error.PERMISSION_DENIED:
+      message = 'Location permission denied. Cannot calculate prayer times.';
+      break;
+    case error.POSITION_UNAVAILABLE:
+      message = 'Location information is unavailable.';
+      break;
+    case error.TIMEOUT:
+      message = 'The request to get your location timed out.';
+      break;
+    default:
+      message = 'An unknown error occurred obtaining location.';
+  }
+  showError(message);
+  document.getElementById('location').textContent = 'Unavailable';
+}
+
+function requestLocationAndUpdate() {
+  if (!navigator.geolocation) {
+    showError('Geolocation is not supported by your browser.');
+    document.getElementById('location').textContent = 'Unavailable';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(updatePrayerTimesAndLocation, handleLocationError, {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 0
+  });
+}
+
+updateClock();
+setInterval(updateClock, 1000);
+requestLocationAndUpdate();
+setInterval(requestLocationAndUpdate, 5 * 60 * 1000);
+</script>
+
+</body>
+</html>
